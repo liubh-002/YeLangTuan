@@ -130,9 +130,14 @@ function LoginPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        login(data.token, data);
-        navigate('/');
+        if (isRegister) {
+          setMessage('注册成功，请登录');
+          setIsRegister(false);
+        } else {
+          const data = await response.json();
+          login(data.token, data);
+          navigate('/');
+        }
       } else {
         const error = await response.json();
         setMessage(error.message || '操作失败');
@@ -402,10 +407,10 @@ function MainPage() {
   const { user, token, mode } = useUser();
   const navigate = useNavigate();
   const [plan, setPlan] = useState(null);
-  const [peopleCount, setPeopleCount] = useState(3);
+  const [peopleCount, setPeopleCount] = useState(1);
   const [taste, setTaste] = useState('');
-  const [weeklyBudget, setWeeklyBudget] = useState(500);
-  const [monthlySalary, setMonthlySalary] = useState(user?.monthSalary || 6000);
+  const [weeklyBudget, setWeeklyBudget] = useState('');
+  const [monthlySalary, setMonthlySalary] = useState(user?.monthSalary || '');
   const [crowd, setCrowd] = useState('');
   const [dietTaboo, setDietTaboo] = useState('');
   const [favoriteDishes, setFavoriteDishes] = useState('');
@@ -565,7 +570,7 @@ function MainPage() {
         body: JSON.stringify({
           peopleCount: Number(peopleCount),
           taste,
-          weeklyBudget: Number(weeklyBudget),
+          weeklyBudget: Number(weeklyBudget) || 500,
           monthlySalary: Number(monthlySalary || user?.monthSalary || 0),
           crowd,
           avoidIngredients: splitList(dietTaboo),

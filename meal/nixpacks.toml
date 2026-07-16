@@ -1,0 +1,16 @@
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["cd frontend && npm install --legacy-peer-deps"]
+
+[phases.build]
+cmds = [
+  "cd frontend && npm run build",
+  "mkdir -p backend/src/main/resources/static",
+  "cp -r frontend/dist/* backend/src/main/resources/static/",
+  "cd backend && mvn -B clean package -DskipTests"
+]
+
+[start]
+cmd = "cd backend && java -jar target/ai-meal-planner-1.0.0.jar"

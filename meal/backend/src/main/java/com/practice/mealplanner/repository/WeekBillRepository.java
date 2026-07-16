@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface WeekBillRepository extends JpaRepository<WeekBill, Long> {
     List<WeekBill> findAllByOrderByRecordDateDesc();
+    List<WeekBill> findByUserIdOrderByRecordDateDesc(Long userId);
+    int deleteByUserIdIsNull();
 }

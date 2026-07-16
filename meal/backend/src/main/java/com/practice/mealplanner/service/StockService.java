@@ -15,21 +15,25 @@ public class StockService {
 
     private final FoodStockRepository foodStockRepository;
 
-    public List<FoodStock> getAllStocks() {
-        return foodStockRepository.findAll();
+    public List<FoodStock> getAllStocks(Long userId) {
+        return foodStockRepository.findByUserId(userId);
     }
 
-    public FoodStock addStock(String foodName, String unit, BigDecimal stockNum) {
+    public FoodStock addStock(String foodName, String unit, BigDecimal stockNum, Long userId) {
         FoodStock stock = new FoodStock();
         stock.setFoodName(foodName);
         stock.setUnit(unit);
         stock.setStockNum(stockNum);
+        stock.setUserId(userId);
         return foodStockRepository.save(stock);
     }
 
-    public FoodStock updateStock(Long id, String foodName, String unit, BigDecimal stockNum) {
+    public FoodStock updateStock(Long id, String foodName, String unit, BigDecimal stockNum, Long userId) {
         FoodStock stock = foodStockRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("库存食材不存在"));
+        if (stock.getUserId() == null || !stock.getUserId().equals(userId)) {
+            throw new RuntimeException("无权操作此库存");
+        }
         if (foodName != null) stock.setFoodName(foodName);
         if (unit != null) stock.setUnit(unit);
         if (stockNum != null) stock.setStockNum(stockNum);
@@ -37,9 +41,9 @@ public class StockService {
     }
 
     @Transactional
-    public void deductStock(String foodName, BigDecimal quantity) {
-        FoodStock stock = foodStockRepository.findByFoodName(foodName)
-                .orElseThrow(() -> new RuntimeException("库存中未找到: " + foodName));
+    public void deductStock(String foodName, BigDecimal quantity, Long userId) {
+        FoodStock stock = foodStockRepository.findByFoodNameAndUserId(foodName, userId).orElse(null);
+        if (stock == null) return;
         BigDecimal newNum = stock.getStockNum().subtract(quantity);
         if (newNum.compareTo(BigDecimal.ZERO) < 0) {
             newNum = BigDecimal.ZERO;
@@ -49,21 +53,19 @@ public class StockService {
     }
 
     @Transactional
-    public void restoreStock(String foodName, BigDecimal quantity) {
-        FoodStock stock = foodStockRepository.findByFoodName(foodName)
-                .orElse(null);
-        if (stock == null) {
-            stock = new FoodStock();
-            stock.setFoodName(foodName);
-            stock.setUnit("斤");
-            stock.setStockNum(quantity);
-        } else {
-            stock.setStockNum(stock.getStockNum().add(quantity));
-        }
+    public void restoreStock(String foodName, BigDecimal quantity, Long userId) {
+        FoodStock stock = foodStockRepository.findByFoodNameAndUserId(foodName, userId).orElse(null);
+        if (stock == null) return;
+        stock.setStockNum(stock.getStockNum().add(quantity));
         foodStockRepository.save(stock);
     }
 
-    public void deleteStock(Long id) {
+    public void deleteStock(Long id, Long userId) {
+        FoodStock stock = foodStockRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("库存食材不存在"));
+        if (stock.getUserId() == null || !stock.getUserId().equals(userId)) {
+            throw new RuntimeException("无权操作此库存");
+        }
         foodStockRepository.deleteById(id);
     }
 }

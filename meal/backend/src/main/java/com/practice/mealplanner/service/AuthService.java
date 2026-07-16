@@ -1,12 +1,15 @@
 package com.practice.mealplanner.service;
 
 import com.practice.mealplanner.dto.UserRegisterRequest;
+import com.practice.mealplanner.model.FamilyGroup;
+import com.practice.mealplanner.model.FamilyMember;
 import com.practice.mealplanner.model.User;
+import com.practice.mealplanner.repository.FamilyGroupRepository;
+import com.practice.mealplanner.repository.FamilyMemberRepository;
 import com.practice.mealplanner.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -16,6 +19,8 @@ import java.util.Random;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final FamilyGroupRepository familyGroupRepository;
+    private final FamilyMemberRepository familyMemberRepository;
     private final Map<String, String> verifyCodeStore = new HashMap<String, String>();
 
     public String generateVerifyCode(String phone) {
@@ -55,6 +60,38 @@ public class AuthService {
         if (!user.getPassword().equals(password)) {
             throw new RuntimeException("密码错误");
         }
+        return user;
+    }
+
+    /**
+     * Sub-account login: validates invite code + phone + password
+     */
+    public User loginWithInviteCode(String inviteCode, String phone, String password) {
+        // Validate invite code
+        FamilyGroup group = familyGroupRepository.findByInviteCode(inviteCode)
+                .orElseThrow(() -> new RuntimeException("邀请码无效"));
+
+        // Find user
+        User user = userRepository.findByPhone(phone)
+                .orElseThrow(() -> new RuntimeException("用户不存在"));
+
+        // Validate password
+        if (!user.getPassword().equals(password)) {
+            throw new RuntimeException("密码错误");
+        }
+
+        // Check that this user is linked to this family group as a sub-account
+        FamilyMember member = familyMemberRepository.findBySubAccountUserId(user.getId())
+                .orElseThrow(() -> new RuntimeException("该账号未关联到此家庭组"));
+
+        if (!member.getFamilyId().equals(group.getId())) {
+            throw new RuntimeException("该账号未关联到此家庭组");
+        }
+
+        if (!"ACTIVE".equals(member.getStatus())) {
+            throw new RuntimeException("账号尚未激活，请联系主账号审批");
+        }
+
         return user;
     }
 

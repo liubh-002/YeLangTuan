@@ -1,9 +1,9 @@
 package com.practice.mealplanner.dto;
 
+import lombok.Data;
+
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Pattern;
-
-import lombok.Data;
 
 @Data
 public class UserLoginRequest {
@@ -13,4 +13,6 @@ public class UserLoginRequest {
 
     @NotBlank(message = "密码不能为空")
     private String password;
+
+    private String inviteCode;
 }

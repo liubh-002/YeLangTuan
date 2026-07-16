@@ -32,4 +32,7 @@ public class WeekBill {
 
     @Column(name = "record_date")
     private LocalDate recordDate;
+
+    @Column(name = "user_id")
+    private Long userId;
 }

@@ -1,9 +1,9 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+﻿import React, { useState, useEffect, createContext, useContext } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import './styles.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
+const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 const UserContext = createContext(null);
 
@@ -26,7 +26,7 @@ function App() {
       });
       if (response.ok) {
         const data = await response.json();
-        setUser(data);
+        setUser(prev => ({ ...data, isSubAccount: prev?.isSubAccount || localStorage.getItem('isSubAccount') === 'true' }));
       } else {
         logout();
       }
@@ -51,6 +51,10 @@ function App() {
     setToken(newToken);
     setUser(userData);
     localStorage.setItem('token', newToken);
+    localStorage.setItem('isSubAccount', userData.isSubAccount ? 'true' : 'false');
+    sessionStorage.removeItem('mealPlan');
+    sessionStorage.removeItem('mealFilters');
+    sessionStorage.removeItem('completedMeals');
     fetchMode();
   }
 
@@ -58,6 +62,10 @@ function App() {
     setUser(null);
     setToken(null);
     localStorage.removeItem('token');
+    localStorage.removeItem('isSubAccount');
+    sessionStorage.removeItem('mealPlan');
+    sessionStorage.removeItem('mealFilters');
+    sessionStorage.removeItem('completedMeals');
     setMode('PERSONAL');
   }
 
@@ -101,6 +109,7 @@ function LoginPage() {
   const [isRegister, setIsRegister] = useState(false);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -121,7 +130,7 @@ function LoginPage() {
       const url = isRegister ? `${API_BASE}/api/auth/register` : `${API_BASE}/api/auth/login`;
       const body = isRegister 
         ? { name, phone, password, gender, age: age ? Number(age) : null, monthSalary: monthSalary ? Number(monthSalary) : null, tastePrefer, dietTaboo }
-        : { phone, password };
+        : inviteCode ? { phone, password, inviteCode } : { phone, password };
       
       const response = await fetch(url, {
         method: 'POST',
@@ -221,6 +230,11 @@ function LoginPage() {
               </label>
             </>
           )}
+
+          <label>邀请码（子账户填写）
+            <input type="text" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} 
+                   placeholder="未填写则为主账号" />
+          </label>
 
           <button type="submit" className="primary-button" disabled={loading}>
             {loading ? '处理中...' : (isRegister ? '注册' : '登录')}
@@ -378,7 +392,7 @@ function TopNav({ children, showUserMenu = true }) {
             <div className="avatar">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
-            <span>{user.name}</span>
+            <span>{user.name} <span style={{fontSize:"11px",color:"#64716b"}}>({user.isSubAccount ? "子账号":"主账号"})</span></span>
             {showMenu && (
               <div className="dropdown-menu">
                 <button onClick={() => { setShowMenu(false); navigate('/profile'); }}>
@@ -448,6 +462,14 @@ function MainPage() {
         if (f.dinnerWant) setDinnerWant(f.dinnerWant);
         if (f.crowd) setCrowd(f.crowd);
       } catch(e) {}
+    }
+    // Sync dietTaboo from user profile if not set from saved filters
+    if (user && user.dietTaboo && user.dietTaboo !== '无') {
+      setDietTaboo(prev => prev || user.dietTaboo);
+    }
+    // Sync monthlySalary from user profile if not set
+    if (user && user.monthSalary) {
+      setMonthlySalary(prev => prev || user.monthSalary);
     }
   }, []);
 
@@ -564,6 +586,14 @@ function MainPage() {
     setLoading(true);
     setMessage('');
     try {
+      // Sync dietTaboo and tastePrefer back to user profile
+      try {
+        await fetch(API_BASE + '/api/users/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ dietTaboo: dietTaboo, tastePrefer: taste })
+        });
+      } catch(e) {}
       const response = await fetch(API_BASE + '/api/plans/generate', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -888,43 +918,114 @@ function printMenu() {
 
 
 function ProfilePage() {
-  const { user, token, logout, mode, fetchMode } = useUser();
+  const { user, token } = useUser();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = React.useState('profile');
   const [formData, setFormData] = React.useState({
-    name: user?.name || '',
-    gender: user?.gender || '',
-    age: user?.age || '',
-    monthSalary: user?.monthSalary || '',
-    tastePrefer: user?.tastePrefer || '',
-    dietTaboo: user?.dietTaboo || ''
+    name: user?.name || "",
+    gender: user?.gender || "",
+    age: user?.age || "",
+    monthSalary: user?.monthSalary || "",
+    tastePrefer: user?.tastePrefer || "",
+    dietTaboo: user?.dietTaboo || ""
   });
-  const [family, setFamily] = React.useState(null);
-  const [familyMembers, setFamilyMembers] = React.useState([]);
-  const [joinCode, setJoinCode] = React.useState('');
-  const [inviteCode, setInviteCode] = React.useState('');
-  const [message, setMessage] = React.useState('');
-  const [memberForm, setMemberForm] = React.useState({ name: '', age: '', personTag: '\u666e\u901a', appetite: 3, dietTaboo: '\u65e0' });
-  const [showAddMember, setShowAddMember] = React.useState(false);
-
-  React.useEffect(() => {
-    fetchProfile();
-    fetchFamily();
-  }, []);
-
+  const [message, setMessage] = React.useState("");
+  React.useEffect(() => { fetchProfile(); }, []);
   async function fetchProfile() {
     try {
-      const res = await fetch(API_BASE + '/api/users/profile', {
+      const res = await fetch(API_BASE + "/api/users/profile", {
+        headers: { Authorization: "Bearer " + token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFormData({ name: data.name || "", gender: data.gender || "", age: data.age || "", monthSalary: data.monthSalary || "", tastePrefer: data.tastePrefer || "", dietTaboo: data.dietTaboo || "" });
+      }
+    } catch(e) {}
+  }
+  async function handleSaveProfile(e) {
+    e.preventDefault();
+    try {
+      const res = await fetch(API_BASE + "/api/users/profile", {
+        method: "PUT",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify(formData)
+      });
+      setMessage(res.ok ? "保存成功" : "保存失败");
+      if (!res.ok) setTimeout(() => setMessage(""), 2000);
+    } catch(e) { setMessage("网络错误"); }
+  }
+  return React.createElement("div", { className: "app-container" },
+    React.createElement(TopNav, null),
+    React.createElement("main", { className: "page-content" },
+      message ? React.createElement("p", { style: { color: "#1f7a4d", marginBottom: "12px" } }, message) : null,
+      React.createElement("div", { className: "form-grid" },
+        React.createElement("div", { className: "form-group" },
+          React.createElement("label", null, "姓名"),
+          React.createElement("input", { className: "filter-input", value: formData.name, onChange: e => setFormData({...formData, name: e.target.value}) })),
+        React.createElement("div", { className: "form-group" },
+          React.createElement("label", null, "性别"),
+          React.createElement("select", { className: "filter-select", value: formData.gender, onChange: e => setFormData({...formData, gender: e.target.value}) },
+            React.createElement("option", { value: "" }, "请选择"),
+            React.createElement("option", { value: "男" }, "男"),
+            React.createElement("option", { value: "女" }, "女"))),
+        React.createElement("div", { className: "form-group" },
+          React.createElement("label", null, "年龄"),
+          React.createElement("input", { className: "filter-input", type: "number", value: formData.age, onChange: e => setFormData({...formData, age: e.target.value}) })),
+        React.createElement("div", { className: "form-group" },
+          React.createElement("label", null, "月度工资(元)"),
+          React.createElement("input", { className: "filter-input", type: "number", value: formData.monthSalary, onChange: e => setFormData({...formData, monthSalary: e.target.value}) })),
+        React.createElement("div", { className: "form-group" },
+          React.createElement("label", null, "饮食忌口"),
+          React.createElement("input", { className: "filter-input", value: formData.dietTaboo, onChange: e => setFormData({...formData, dietTaboo: e.target.value}) })),
+        React.createElement("div", { className: "form-group" },
+          React.createElement("label", null, "喜欢的菜品"),
+          React.createElement("input", { className: "filter-input", value: formData.tastePrefer, onChange: e => setFormData({...formData, tastePrefer: e.target.value}) }))
+      ),
+      React.createElement("button", { className: "primary-button", onClick: handleSaveProfile, style: { marginTop: "16px", width: "100%" } }, "保存修改")
+    )
+  );
+}
+function FamilyMembersPage() {
+  const { user, token, mode, fetchMode } = useUser();
+  const navigate = useNavigate();
+  const [family, setFamily] = React.useState(null);
+  const [familyMembers, setFamilyMembers] = React.useState([]);
+  const [pendingApprovals, setPendingApprovals] = React.useState([]);
+  const [joinCode, setJoinCode] = React.useState('');
+  const [inviteCode, setInviteCode] = React.useState('');
+  const [loading, setLoading] = React.useState(true);
+  const [isMainAccount, setIsMainAccount] = React.useState(false);
+  const [subAccountForm, setSubAccountForm] = React.useState({ name: '', age: '', phone: '', password: '', personTag: '\u666e\u901a', dietTaboo: '\u65e0', appetite: 3 });
+  const [showAddSubAccount, setShowAddSubAccount] = React.useState(false);
+
+  React.useEffect(function() {
+    fetchFamily();
+    fetchMainAccountStatus();
+  }, []);
+
+  async function fetchMainAccountStatus() {
+    try {
+      const res = await fetch(API_BASE + '/api/family/check-main-account', {
         headers: { Authorization: 'Bearer ' + token }
       });
       if (res.ok) {
         const data = await res.json();
-        setFormData({ name: data.name || '', gender: data.gender || '', age: data.age || '', monthSalary: data.monthSalary || '', tastePrefer: data.tastePrefer || '', dietTaboo: data.dietTaboo || '' });
+        setIsMainAccount(data.isMainAccount);
+        if (data.isMainAccount) fetchPendingApprovals();
       }
     } catch(e) {}
   }
 
+  async function fetchPendingApprovals() {
+    try {
+      const res = await fetch(API_BASE + '/api/family/pending-approvals', {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      if (res.ok) setPendingApprovals(await res.json());
+    } catch(e) {}
+  }
+
   async function fetchFamily() {
+    setLoading(true);
     try {
       const res = await fetch(API_BASE + '/api/family/group', {
         headers: { Authorization: 'Bearer ' + token }
@@ -933,6 +1034,7 @@ function ProfilePage() {
         const data = await res.json();
         setInviteCode(data.inviteCode || '');
         setFamily(data);
+        if (data.pendingApprovals) setPendingApprovals(data.pendingApprovals);
       }
     } catch(e) {}
     try {
@@ -941,24 +1043,13 @@ function ProfilePage() {
       });
       if (res.ok) setFamilyMembers(await res.json());
     } catch(e) {}
-  }
-
-  async function handleSaveProfile(e) {
-    e.preventDefault();
-    try {
-      const res = await fetch(API_BASE + '/api/users/profile', {
-        method: 'PUT', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      setMessage(res.ok ? '\u4fdd\u5b58\u6210\u529f' : '\u4fdd\u5b58\u5931\u8d25');
-      if (!res.ok) setTimeout(() => setMessage(''), 2000);
-    } catch(e) { setMessage('\u7f51\u7edc\u9519\u8bef'); }
+    setLoading(false);
   }
 
   async function handleCreateFamily() {
     try {
       const res = await fetch(API_BASE + '/api/family/group', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
-      if (res.ok) { const d = await res.json(); setInviteCode(d.inviteCode); fetchFamily(); fetchMode(); }
+      if (res.ok) { const d = await res.json(); setInviteCode(d.inviteCode); fetchFamily(); fetchMode(); fetchMainAccountStatus(); }
     } catch(e) { alert('\u521b\u5efa\u5931\u8d25'); }
   }
 
@@ -972,14 +1063,39 @@ function ProfilePage() {
     } catch(e) { alert('\u7f51\u7edc\u9519\u8bef'); }
   }
 
-  async function handleAddMember() {
-    if (!memberForm.name || !memberForm.age) return;
+  async function handleAddSubAccount() {
+    if (!subAccountForm.name || !subAccountForm.phone || !subAccountForm.password) {
+      alert('\u59d3\u540d\u3001\u624b\u673a\u53f7\u548c\u5bc6\u7801\u4e0d\u80fd\u4e3a\u7a7a');
+      return;
+    }
+    if (!/^1[3-9]\d{9}$/.test(subAccountForm.phone)) {
+      alert('\u624b\u673a\u53f7\u683c\u5f0f\u4e0d\u6b63\u786e');
+      return;
+    }
     try {
-      const res = await fetch(API_BASE + '/api/family/members', { method: 'POST',
+      const res = await fetch(API_BASE + '/api/family/sub-account', { method: 'POST',
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify(memberForm) });
-      if (res.ok) { setShowAddMember(false); setMemberForm({ name: '', age: '', personTag: '\u666e\u901a', appetite: 3, dietTaboo: '\u65e0' }); fetchFamily(); }
-    } catch(e) { alert('\u6dfb\u52a0\u5931\u8d25'); }
+        body: JSON.stringify({ ...subAccountForm, age: Number(subAccountForm.age) || null }) });
+      if (res.ok) { setShowAddSubAccount(false); setSubAccountForm({ name: '', age: '', phone: '', password: '', personTag: '\u666e\u901a', dietTaboo: '\u65e0', appetite: 3 }); fetchFamily(); }
+      else { const err = await res.json(); alert(err.message || '\u6dfb\u52a0\u5931\u8d25'); }
+    } catch(e) { alert('\u7f51\u7edc\u9519\u8bef'); }
+  }
+
+  async function handleApproveMember(memberId) {
+    try {
+      const res = await fetch(API_BASE + '/api/family/approve/' + memberId, { method: 'POST',
+        headers: { Authorization: 'Bearer ' + token } });
+      if (res.ok) { fetchFamily(); fetchMainAccountStatus(); }
+      else { const err = await res.json(); alert(err.message || '\u5ba1\u6279\u5931\u8d25'); }
+    } catch(e) { alert('\u7f51\u7edc\u9519\u8bef'); }
+  }
+
+  async function handleRejectMember(memberId) {
+    try {
+      await fetch(API_BASE + '/api/family/reject/' + memberId, { method: 'POST',
+        headers: { Authorization: 'Bearer ' + token } });
+      fetchFamily(); fetchMainAccountStatus();
+    } catch(e) { alert('\u7f51\u7edc\u9519\u8bef'); }
   }
 
   async function handleDeleteMember(id) {
@@ -987,148 +1103,117 @@ function ProfilePage() {
     try { await fetch(API_BASE + '/api/family/members/' + id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } }); fetchFamily(); } catch(e) {}
   }
 
-  return (
-    React.createElement('div', { className: 'app-container' },
-      React.createElement(TopNav, null),
-      React.createElement('main', { className: 'page-content' },
-        React.createElement('div', { className: 'profile-tabs' },
-          React.createElement('button', { className: 'profile-tab' + (activeTab === 'profile' ? ' active' : ''), onClick: () => setActiveTab('profile') }, '\u4e2a\u4eba\u8d44\u6599'),
-          React.createElement('button', { className: 'profile-tab' + (activeTab === 'family' ? ' active' : ''), onClick: () => setActiveTab('family') }, '\u5bb6\u5ead\u7ba1\u7406')
-        ),
-        activeTab === 'profile' ?
-          React.createElement('div', { className: 'family-section' },
-            message ? React.createElement('p', { style: { color: '#1f7a4d', marginBottom: '12px' } }, message) : null,
-            React.createElement('div', { className: 'form-grid' },
-              React.createElement('div', { className: 'form-group' },
-                React.createElement('label', null, '\u59d3\u540d'),
-                React.createElement('input', { className: 'filter-input', value: formData.name, onChange: e => setFormData({...formData, name: e.target.value}) })),
-              React.createElement('div', { className: 'form-group' },
-                React.createElement('label', null, '\u6027\u522b'),
-                React.createElement('select', { className: 'filter-select', value: formData.gender, onChange: e => setFormData({...formData, gender: e.target.value}) },
-                  React.createElement('option', { value: '' }, '\u8bf7\u9009\u62e9'),
-                  React.createElement('option', { value: '\u7537' }, '\u7537'),
-                  React.createElement('option', { value: '\u5973' }, '\u5973')),
-              ),
-              React.createElement('div', { className: 'form-group' },
-                React.createElement('label', null, '\u5e74\u9f84'),
-                React.createElement('input', { className: 'filter-input', type: 'number', value: formData.age, onChange: e => setFormData({...formData, age: e.target.value}) })),
-              React.createElement('div', { className: 'form-group' },
-                React.createElement('label', null, '\u6708\u5ea6\u5de5\u8d44(\u5143)'),
-                React.createElement('input', { className: 'filter-input', type: 'number', value: formData.monthSalary, onChange: e => setFormData({...formData, monthSalary: e.target.value}) })),
-              React.createElement('div', { className: 'form-group' },
-                React.createElement('label', null, '\u996e\u98df\u5fcc\u53e3'),
-                React.createElement('input', { className: 'filter-input', value: formData.dietTaboo, onChange: e => setFormData({...formData, dietTaboo: e.target.value}) })),
-              React.createElement('div', { className: 'form-group' },
-                React.createElement('label', null, '\u559c\u6b22\u7684\u83dc\u54c1'),
-                React.createElement('input', { className: 'filter-input', value: formData.tastePrefer, onChange: e => setFormData({...formData, tastePrefer: e.target.value}) }))
-            ),
-            React.createElement('button', { className: 'primary-button', onClick: handleSaveProfile, style: { marginTop: '16px', width: '100%' } }, '\u4fdd\u5b58\u4fee\u6539')
-          ) :
-          React.createElement('div', { className: 'family-section' },
-            !inviteCode ?
-              React.createElement('div', { style: { textAlign: 'center', padding: '20px' } },
-                React.createElement('p', null, '\u60a8\u5c1a\u672a\u521b\u5efa\u5bb6\u5ead\u7ec4'),
-                React.createElement('button', { className: 'primary-button', onClick: handleCreateFamily }, '\u521b\u5efa\u5bb6\u5ead')
-              ) :
-              React.createElement('div', null,
-                React.createElement('div', { className: 'invite-code-box' },
-                  React.createElement('span', null, '\u9080\u8bf7\u7801:'),
-                  React.createElement('span', { className: 'code' }, inviteCode),
-                  React.createElement('button', { className: 'ghost-button small', onClick: () => { navigator.clipboard.writeText(inviteCode); alert('\u5df2\u590d\u5236'); } }, '\u590d\u5236')
-                ),
-                React.createElement('div', { className: 'form-row', style: { marginBottom: '16px' } },
-                  React.createElement('input', { className: 'filter-input', value: joinCode, onChange: e => setJoinCode(e.target.value), placeholder: '\u8f93\u5165\u9080\u8bf7\u7801\u52a0\u5165\u5bb6\u5ead', style: { flex: 1 } }),
-                  React.createElement('button', { className: 'primary-button', onClick: handleJoinFamily, disabled: !joinCode.trim() }, '\u52a0\u5165')
-                ),
-                React.createElement('div', { className: 'section-header', style: { marginBottom: '12px' } },
-                  React.createElement('h3', { style: { margin: 0 } }, '\u5bb6\u5ead\u6210\u5458 (' + familyMembers.length + ')'),
-                  React.createElement('button', { className: 'primary-button small', onClick: () => setShowAddMember(true) }, '\u65b0\u589e\u6210\u5458')
-                ),
-                showAddMember ? React.createElement('div', { className: 'modal-overlay', onClick: () => setShowAddMember(false) },
-                  React.createElement('div', { className: 'modal-content', onClick: e => e.stopPropagation() },
-                    React.createElement('h3', null, '\u65b0\u589e\u5bb6\u5ead\u6210\u5458'),
-                    React.createElement('div', { className: 'form-group' },
-                      React.createElement('label', null, '\u59d3\u540d'),
-                      React.createElement('input', { className: 'filter-input', value: memberForm.name, onChange: e => setMemberForm({...memberForm, name: e.target.value}) })),
-                    React.createElement('div', { className: 'form-row' },
-                      React.createElement('div', { className: 'form-group' },
-                        React.createElement('label', null, '\u5e74\u9f84'),
-                        React.createElement('input', { className: 'filter-input', type: 'number', value: memberForm.age, onChange: e => setMemberForm({...memberForm, age: e.target.value}) })),
-                      React.createElement('div', { className: 'form-group' },
-                        React.createElement('label', null, '\u4eba\u7fa4\u6807\u7b7e'),
-                        React.createElement('select', { className: 'filter-select', value: memberForm.personTag, onChange: e => setMemberForm({...memberForm, personTag: e.target.value}) },
-                          React.createElement('option', { value: '\u666e\u901a' }, '\u666e\u901a'),
-                          React.createElement('option', { value: '\u513f\u7ae5' }, '\u513f\u7ae5'),
-                          React.createElement('option', { value: '\u9752\u5e74' }, '\u9752\u5e74'),
-                          React.createElement('option', { value: '\u8001\u5e74' }, '\u8001\u5e74'),
-                          React.createElement('option', { value: '\u75c5\u4eba' }, '\u75c5\u4eba'),
-                          React.createElement('option', { value: '\u51cf\u80a5' }, '\u51cf\u80a5'))),
-                    ),
-                    React.createElement('div', { className: 'form-group' },
-                      React.createElement('label', null, '\u996e\u98df\u5fcc\u53e3'),
-                      React.createElement('input', { className: 'filter-input', value: memberForm.dietTaboo, onChange: e => setMemberForm({...memberForm, dietTaboo: e.target.value}) })),
-                    React.createElement('div', { className: 'modal-actions' },
-                      React.createElement('button', { className: 'ghost-button', onClick: () => setShowAddMember(false) }, '\u53d6\u6d88'),
-                      React.createElement('button', { className: 'primary-button', onClick: handleAddMember }, '\u786e\u8ba4\u6dfb\u52a0'))
-                  )
-                ) : null,
-                React.createElement('div', { className: 'member-list' },
-                  familyMembers.map(m => React.createElement('div', { key: m.id, className: 'member-card' },
-                    React.createElement('div', { className: 'member-info' },
-                      React.createElement('strong', null, m.name),
-                      React.createElement('span', null, m.personTag + ' | ' + (m.dietTaboo !== '\u65e0' ? '\u5fcc\u53e3:' + m.dietTaboo : '\u65e0\u5fcc\u53e3'))
-                    ),
-                    React.createElement('button', { className: 'ghost-button small danger', onClick: () => handleDeleteMember(m.id) }, '\u5220\u9664')
-                  )),
-                  familyMembers.length === 0 ? React.createElement('p', { style: { color: '#64716b', textAlign: 'center' } }, '\u6682\u65e0\u5bb6\u5ead\u6210\u5458') : null
-                )
-              )
-          )
-      )
-    )
-  );
-}
-
-
-
-function FamilyMembersPage() {
-  const { token } = useUser();
-  const navigate = useNavigate();
-  const [members, setMembers] = React.useState([]);
-  const [loading, setLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    async function fetch() {
-      try {
-        const res = await fetch(API_BASE + '/api/family/members', { headers: { Authorization: 'Bearer ' + token } });
-        if (res.ok) setMembers(await res.json());
-      } catch(e) {}
-      setLoading(false);
-    }
-    fetch();
-  }, []);
-
   if (loading) return React.createElement('div', { className: 'app-container' }, React.createElement('div', { className: 'loading-screen' }, React.createElement('p', null, '\u52a0\u8f7d\u4e2d...')));
 
   return React.createElement('div', { className: 'app-container' },
     React.createElement(TopNav, null),
     React.createElement('main', { className: 'page-content' },
-      React.createElement('h2', null, '\u5bb6\u5ead\u6210\u5458'),
-      members.length === 0 ?
-        React.createElement('div', { className: 'empty-state' }, React.createElement('h2', null, '\u6682\u65e0\u5bb6\u5ead\u6210\u5458')) :
-        React.createElement('div', { className: 'member-list' },
-          members.map(m => React.createElement('div', { key: m.id, className: 'member-card' },
-            React.createElement('div', { className: 'member-info' },
-              React.createElement('strong', null, m.name),
-              React.createElement('span', null, m.personTag + ' | \u5e74\u9f84:' + m.age)
+      React.createElement('div', { className: 'section-header' },
+        React.createElement('h2', null, '\u5bb6\u5ead\u7ba1\u7406'),
+        React.createElement('span', { style: { fontSize: '12px', color: '#64716b' } }, (user && user.isSubAccount) ? '\u5b50\u8d26\u53f7' : '\u4e3b\u8d26\u53f7')
+      ),
+      !inviteCode ?
+        React.createElement('div', { style: { textAlign: 'center', padding: '40px 20px' } },
+          React.createElement('p', null, '\u60a8\u5c1a\u672a\u521b\u5efa\u5bb6\u5ead\u7ec4'),
+          (user && !user.isSubAccount) ?
+            React.createElement('button', { className: 'primary-button', onClick: handleCreateFamily }, '\u521b\u5efa\u5bb6\u5ead') :
+            React.createElement('div', null,
+              React.createElement('p', { style: { color: '#64716b', fontSize: '13px' } }, '\u8bf7\u901a\u8fc7\u9080\u8bf7\u7801\u52a0\u5165\u5bb6\u5ead'),
+              React.createElement('div', { className: 'form-row', style: { marginTop: '12px', justifyContent: 'center' } },
+                React.createElement('input', { className: 'filter-input', value: joinCode, onChange: e => setJoinCode(e.target.value), placeholder: '\u8f93\u5165\u9080\u8bf7\u7801', style: { flex: 1, maxWidth: '300px' } }),
+                React.createElement('button', { className: 'primary-button', onClick: handleJoinFamily, disabled: !joinCode.trim() }, '\u52a0\u5165')
+              )
             )
-          ))
+        ) :
+        React.createElement('div', null,
+          React.createElement('div', { className: 'invite-code-box' },
+            React.createElement('span', null, '\u9080\u8bf7\u7801:'),
+            React.createElement('span', { className: 'code' }, inviteCode),
+            React.createElement('button', { className: 'ghost-button small', onClick: () => { navigator.clipboard.writeText(inviteCode); alert('\u5df2\u590d\u5236'); } }, '\u590d\u5236')
+          ),
+          (user && !user.isSubAccount) ?
+            React.createElement('div', { style: { marginTop: '16px', marginBottom: '16px' } },
+              React.createElement('button', { className: 'primary-button small', style: { background: '#7c3aed' }, onClick: () => setShowAddSubAccount(true) }, '\u6dfb\u52a0\u5b50\u8d26\u53f7')
+            ) : null,
+          showAddSubAccount ?
+            React.createElement('div', { className: 'modal-overlay', onClick: () => setShowAddSubAccount(false) },
+              React.createElement('div', { className: 'modal-content', onClick: function(e) { e.stopPropagation(); } },
+                React.createElement('h3', null, '\u6dfb\u52a0\u5b50\u8d26\u53f7'),
+                React.createElement('p', { style: { fontSize: '13px', color: '#64716b', marginBottom: '12px' } }, '\u8bbe\u7f6e\u5b50\u8d26\u53f7\u7684\u8d26\u53f7\u5bc6\u7801\uff0c\u5b50\u8d26\u53f7\u53ef\u4f7f\u7528\u624b\u673a\u53f7+\u5bc6\u7801+\u9080\u8bf7\u7801\u767b\u5f55'),
+                React.createElement('div', { className: 'form-group' },
+                  React.createElement('label', null, '\u59d3\u540d'),
+                  React.createElement('input', { className: 'filter-input', value: subAccountForm.name, onChange: e => setSubAccountForm({...subAccountForm, name: e.target.value}) })),
+                React.createElement('div', { className: 'form-group' },
+                  React.createElement('label', null, '\u624b\u673a\u53f7'),
+                  React.createElement('input', { className: 'filter-input', value: subAccountForm.phone, onChange: e => setSubAccountForm({...subAccountForm, phone: e.target.value}), placeholder: '11\u4f4d\u624b\u673a\u53f7' })),
+                React.createElement('div', { className: 'form-group' },
+                  React.createElement('label', null, '\u5bc6\u7801'),
+                  React.createElement('input', { className: 'filter-input', type: 'password', value: subAccountForm.password, onChange: e => setSubAccountForm({...subAccountForm, password: e.target.value}) })),
+                React.createElement('div', { className: 'form-row' },
+                  React.createElement('div', { className: 'form-group' },
+                    React.createElement('label', null, '\u5e74\u9f84'),
+                    React.createElement('input', { className: 'filter-input', type: 'number', value: subAccountForm.age, onChange: e => setSubAccountForm({...subAccountForm, age: e.target.value}) })),
+                  React.createElement('div', { className: 'form-group' },
+                    React.createElement('label', null, '\u4eba\u7fa4\u6807\u7b7e'),
+                    React.createElement('select', { className: 'filter-select', value: subAccountForm.personTag, onChange: e => setSubAccountForm({...subAccountForm, personTag: e.target.value}) },
+                      React.createElement('option', { value: '\u666e\u901a' }, '\u666e\u901a'),
+                      React.createElement('option', { value: '\u513f\u7ae5' }, '\u513f\u7ae5'),
+                      React.createElement('option', { value: '\u9752\u5e74' }, '\u9752\u5e74'),
+                      React.createElement('option', { value: '\u8001\u5e74' }, '\u8001\u5e74'),
+                      React.createElement('option', { value: '\u75c5\u4eba' }, '\u75c5\u4eba'),
+                      React.createElement('option', { value: '\u51cf\u80a5' }, '\u51cf\u80a5'))),
+                ),
+                React.createElement('div', { className: 'form-group' },
+                  React.createElement('label', null, '\u996e\u98df\u5fcc\u53e3'),
+                  React.createElement('input', { className: 'filter-input', value: subAccountForm.dietTaboo, onChange: e => setSubAccountForm({...subAccountForm, dietTaboo: e.target.value}) })),
+                React.createElement('div', { className: 'modal-actions' },
+                  React.createElement('button', { className: 'ghost-button', onClick: () => setShowAddSubAccount(false) }, '\u53d6\u6d88'),
+                  React.createElement('button', { className: 'primary-button', onClick: handleAddSubAccount }, '\u521b\u5efa\u5b50\u8d26\u53f7'))
+              )
+            ) : null,
+          (user && !user.isSubAccount) && pendingApprovals.length > 0 ?
+            React.createElement('div', { className: 'section-header', style: { marginTop: '16px' } },
+              React.createElement('h3', { style: { margin: 0, color: '#c2410c' } }, '\u5f85\u5ba1\u6279\u7533\u8bf7 (' + pendingApprovals.length + ')'),
+              React.createElement('div', { className: 'pending-list', style: { width: '100%', marginTop: '8px' } },
+                pendingApprovals.map(function(m) {
+                  return React.createElement('div', { key: m.id, className: 'member-card', style: { border: '1px solid #f5c6a0', background: '#fff5ee' } },
+                    React.createElement('div', { className: 'member-info' },
+                      React.createElement('strong', null, m.name || '\u5f85\u5b8c\u5584'),
+                      React.createElement('span', null, m.phone ? '\u624b\u673a:' + m.phone : '')
+                    ),
+                    React.createElement('div', { className: 'edit-buttons' },
+                      React.createElement('button', { className: 'primary-button small', onClick: () => handleApproveMember(m.id) }, '\u540c\u610f'),
+                      React.createElement('button', { className: 'ghost-button small danger', onClick: () => handleRejectMember(m.id) }, '\u62d2\u7edd')
+                    )
+                  );
+                })
+              )
+            ) : null,
+          React.createElement('div', { className: 'section-header', style: { marginTop: '16px', marginBottom: '12px' } },
+            React.createElement('h3', { style: { margin: 0 } }, '\u5bb6\u5ead\u6210\u5458 (' + familyMembers.length + ')')
+          ),
+          React.createElement('div', { className: 'member-list' },
+            familyMembers.map(function(m) {
+              return React.createElement('div', { key: m.id, className: 'member-card' },
+                React.createElement('div', { className: 'member-info' },
+                  React.createElement('strong', null, m.name),
+                  React.createElement('span', null,
+                    (m.isSubAccount ? '\u5b50\u8d26\u53f7 | ' : '') + (m.personTag || '') +
+                    (m.dietTaboo && m.dietTaboo !== '\u65e0' ? ' | \u5fcc\u53e3:' + m.dietTaboo : ' | \u65e0\u5fcc\u53e3')
+                  ),
+                  m.phone ? React.createElement('span', { style: { fontSize: '12px', color: '#64716b' } }, '\u624b\u673a:' + m.phone) : null
+                ),
+                m.isSubAccount ?
+                  React.createElement('button', { className: 'ghost-button small danger', onClick: () => handleDeleteMember(m.id) }, '\u5220\u9664') :
+                  null
+              );
+            }),
+            familyMembers.length === 0 ? React.createElement('p', { style: { color: '#64716b', textAlign: 'center' } }, '\u6682\u65e0\u5bb6\u5ead\u6210\u5458') : null
+          )
         )
     )
   );
 }
-
-
 
 function RecipeSearchPage() {
   const { token } = useUser();
@@ -1316,6 +1401,14 @@ function StockPage() {
     } catch(e) {console.error(e);}
   }
 
+  async function handleDeleteAll() {
+    if (!confirm('确定要删除所有库存吗？')) return;
+    try {
+      await fetch(API_BASE + '/api/stock/all', { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+      fetchStocks();
+    } catch(e) {console.error(e);}
+  }
+
   if (loading) return React.createElement('div', { className: 'app-container' }, React.createElement('div', { className: 'loading-screen' }, React.createElement('p', null, '\u52a0\u8f7d\u4e2d...')));
 
   return React.createElement('div', { className: 'app-container' },
@@ -1323,7 +1416,8 @@ function StockPage() {
     React.createElement('main', { className: 'page-content' },
       React.createElement('div', { className: 'section-header' },
         React.createElement('h2', null, '\u98df\u6750\u5e93\u5b58\u7ba1\u7406'),
-        React.createElement('button', { className: 'primary-button small', onClick: () => { setShowAdd(true); setAddForm({ foodName: '', unit: '\u65a4', stockNum: '' }); } }, '\u65b0\u589e\u98df\u6750')
+        React.createElement('button', { className: 'primary-button small', onClick: () => { setShowAdd(true); setAddForm({ foodName: '', unit: '\u65a4', stockNum: '' }); } }, '\u65b0\u589e\u98df\u6750'),
+                React.createElement('button', { className: 'ghost-button small danger', onClick: handleDeleteAll, style: { marginLeft: '8px' } }, '\u5220\u9664\u6240\u6709'),
       ),
       showAdd ? React.createElement('div', { className: 'modal-overlay', onClick: () => setShowAdd(false) },
         React.createElement('div', { className: 'modal-content', onClick: e => e.stopPropagation() },
@@ -1575,6 +1669,14 @@ function StockPage() {
     } catch(e) { console.error(e); }
   }
 
+  async function handleDeleteAll() {
+    if (!confirm('确定要删除所有采购记录吗？')) return;
+    try {
+      await fetch(API_BASE + '/api/purchases/all', { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+      fetchRecords();
+    } catch(e) {console.error(e);}
+  }
+
   async function toggleStatus(record) {
     try {
       var suffix = record.status === '待采购' ? '/purchased' : '/unpurchased';
@@ -1622,7 +1724,8 @@ function StockPage() {
           React.createElement('button', { className: 'ghost-button' + (filter === 'all' ? ' active' : ''), onClick: function() { setFilter('all'); } }, '全部(' + records.length + ')'),
           React.createElement('button', { className: 'ghost-button' + (filter === 'need' ? ' active' : ''), onClick: function() { setFilter('need'); } }, '需购(' + needCount + ')'),
           React.createElement('button', { className: 'ghost-button' + (filter === 'bought' ? ' active' : ''), onClick: function() { setFilter('bought'); } }, '已购(' + boughtCount + ')'),
-          React.createElement('button', { className: 'primary-button small', style: { marginLeft: '8px' }, onClick: function() { handlePrint(); } }, '打印采购清单')
+          React.createElement('button', { className: 'primary-button small', style: { marginLeft: '8px' }, onClick: function() { handlePrint(); } }, '打印采购清单'),
+          React.createElement('button', { className: 'ghost-button small danger', onClick: handleDeleteAll, style: { marginLeft: '8px' } }, '一键删除')
         )
       ),
       filtered.length === 0 ?

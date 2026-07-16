@@ -1,0 +1,9 @@
+﻿  function login(newToken, userData) {
+    setToken(newToken);
+    setUser(userData);
+    localStorage.setItem('token', newToken);
+    sessionStorage.removeItem('mealPlan');
+    sessionStorage.removeItem('mealFilters');
+    sessionStorage.removeItem('completedMeals');
+    fetchMode();
+  }

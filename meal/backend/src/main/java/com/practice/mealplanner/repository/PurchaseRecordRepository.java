@@ -8,6 +8,10 @@ import java.util.List;
 
 @Repository
 public interface PurchaseRecordRepository extends JpaRepository<PurchaseRecord, Long> {
+    List<PurchaseRecord> findByPlanIdAndUserId(Long planId, Long userId);
     List<PurchaseRecord> findByPlanId(Long planId);
-    List<PurchaseRecord> findByStatus(String status);
+    List<PurchaseRecord> findByStatusAndUserId(String status, Long userId);
+    List<PurchaseRecord> findByUserId(Long userId);
+    int deleteByUserIdIsNull();
+    void deleteByUserId(Long userId);
 }

@@ -3,6 +3,7 @@ package com.practice.mealplanner.model;
 import lombok.Data;
 
 import javax.persistence.*;
+import java.math.BigDecimal;
 
 @Data
 @Entity
@@ -20,8 +21,14 @@ public class PurchaseRecord {
     private String foodName;
 
     @Column(name = "need_num", precision = 10, scale = 2)
-    private java.math.BigDecimal needNum;
+    private BigDecimal needNum;
+
+    @Column(length = 10)
+    private String unit;
 
     @Column(length = 20)
     private String status;
+
+    @Column(name = "user_id")
+    private Long userId;
 }

@@ -22,4 +22,7 @@ public class FoodStock {
 
     @Column(name = "stock_num", precision = 10, scale = 2)
     private BigDecimal stockNum;
+
+    @Column(name = "user_id")
+    private Long userId;
 }

@@ -7,14 +7,14 @@ spring:
     username: ${MYSQL_USER:root}
     password: ${MYSQL_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
- jpa:
-  hibernate:
-    ddl-auto: update
-  show-sql: false
-  database-platform: org.hibernate.dialect.MySQL8Dialect
-  properties:
+  jpa:
     hibernate:
-      format_sql: true
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.MySQL8Dialect
+    properties:
+      hibernate:
+        format_sql: true
   jackson:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss
@@ -22,4 +22,3 @@ spring:
 ai:
   dashscope:
     api-key: ${AI_API_KEY:sk-1e10a276e3194e79a431a625ab419384}
-

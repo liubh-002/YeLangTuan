@@ -1,6 +1,7 @@
 package com.practice.mealplanner.controller;
 
 import com.practice.mealplanner.model.User;
+import com.practice.mealplanner.repository.FamilyMemberRepository;
 import com.practice.mealplanner.service.AuthService;
 import com.practice.mealplanner.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -18,12 +19,26 @@ public class UserController {
 
     private final UserService userService;
     private final AuthService authService;
+    private final FamilyMemberRepository familyMemberRepository;
 
     @GetMapping("/profile")
-    public ResponseEntity<User> getProfile(HttpServletRequest request) {
+    public ResponseEntity<Map<String, Object>> getProfile(HttpServletRequest request) {
         String token = extractToken(request);
         User user = authService.getUserByToken(token);
-        return ResponseEntity.ok(user);
+        Map<String, Object> result = new HashMap<>();
+        result.put("id", user.getId());
+        result.put("name", user.getName());
+        result.put("phone", user.getPhone());
+        result.put("nickname", user.getNickname());
+        result.put("gender", user.getGender());
+        result.put("age", user.getAge());
+        result.put("monthSalary", user.getMonthSalary());
+        result.put("tastePrefer", user.getTastePrefer());
+        result.put("dietTaboo", user.getDietTaboo());
+        // Check if this user is a sub-account
+        boolean isSub = familyMemberRepository.findBySubAccountUserId(user.getId()).isPresent();
+        result.put("isSubAccount", isSub);
+        return ResponseEntity.ok(result);
     }
 
     @PutMapping("/profile")

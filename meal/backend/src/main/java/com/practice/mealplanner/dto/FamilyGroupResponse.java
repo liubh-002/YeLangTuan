@@ -9,4 +9,5 @@ public class FamilyGroupResponse {
     private Long id;
     private String inviteCode;
     private List<FamilyMemberResponse> members;
+    private List<FamilyMemberResponse> pendingApprovals;
 }

@@ -4,7 +4,9 @@ import com.practice.mealplanner.dto.ForgotPasswordRequest;
 import com.practice.mealplanner.dto.UserLoginRequest;
 import com.practice.mealplanner.dto.UserRegisterRequest;
 import com.practice.mealplanner.dto.VerifyCodeRequest;
+import com.practice.mealplanner.model.FamilyMember;
 import com.practice.mealplanner.model.User;
+import com.practice.mealplanner.repository.FamilyMemberRepository;
 import com.practice.mealplanner.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +24,7 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final FamilyMemberRepository familyMemberRepository;
 
     @PostMapping("/register")
     public ResponseEntity<Map<String, Object>> register(@Valid @RequestBody UserRegisterRequest request) {
@@ -37,12 +40,24 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody UserLoginRequest request) {
-        User user = authService.login(request.getPhone(), request.getPassword());
+        User user;
+        boolean isSubAccount = false;
+
+        if (request.getInviteCode() != null && !request.getInviteCode().trim().isEmpty()) {
+            // Sub-account login with invite code
+            user = authService.loginWithInviteCode(request.getInviteCode().trim(), request.getPhone(), request.getPassword());
+            isSubAccount = true;
+        } else {
+            // Main account login
+            user = authService.login(request.getPhone(), request.getPassword());
+        }
+
         Map<String, Object> result = new HashMap<String, Object>();
         result.put("token", user.getPhone());
         result.put("userId", user.getId());
         result.put("phone", user.getPhone());
         result.put("nickname", user.getNickname());
+        result.put("isSubAccount", isSubAccount);
         return ResponseEntity.ok(result);
     }
 

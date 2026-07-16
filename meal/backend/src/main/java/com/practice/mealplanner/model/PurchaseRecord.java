@@ -23,6 +23,9 @@ public class PurchaseRecord {
     @Column(name = "need_num", precision = 10, scale = 2)
     private BigDecimal needNum;
 
+    @Column(length = 10)
+    private String unit;
+
     @Column(length = 20)
     private String status;
 

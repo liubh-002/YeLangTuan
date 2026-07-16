@@ -34,6 +34,18 @@ public class FamilyMember {
     @Column(name = "family_id")
     private Long familyId;
 
+    @Column(name = "sub_account_user_id")
+    private Long subAccountUserId;
+
+    @Column(length = 20)
+    private String phone;
+
+    @Column(length = 20)
+    private String status;
+
+    @Column(name = "is_sub_account")
+    private Boolean isSubAccount = false;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -42,6 +54,9 @@ public class FamilyMember {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (status == null) {
+            status = "ACTIVE";
+        }
     }
 
     @PreUpdate

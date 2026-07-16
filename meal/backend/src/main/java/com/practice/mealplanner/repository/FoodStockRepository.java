@@ -13,4 +13,5 @@ public interface FoodStockRepository extends JpaRepository<FoodStock, Long> {
     boolean existsByFoodNameAndUserId(String foodName, Long userId);
     List<FoodStock> findByUserId(Long userId);
     int deleteByUserIdIsNull();
+    void deleteByUserId(Long userId);
 }

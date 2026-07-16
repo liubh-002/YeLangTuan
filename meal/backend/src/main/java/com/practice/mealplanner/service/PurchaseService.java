@@ -22,12 +22,13 @@ public class PurchaseService {
         return purchaseRecordRepository.findByPlanIdAndUserId(planId, userId);
     }
 
-    public PurchaseRecord addRecord(Long planId, String foodName, BigDecimal needNum, Long userId) {
+    public PurchaseRecord addRecord(Long planId, String foodName, BigDecimal needNum, Long userId, String unit) {
         PurchaseRecord record = new PurchaseRecord();
         record.setPlanId(planId);
         record.setFoodName(foodName);
         record.setNeedNum(needNum);
         record.setStatus("待采购");
+        record.setUnit(unit != null ? unit : "斤");
         record.setUserId(userId);
         return purchaseRecordRepository.save(record);
     }
@@ -72,6 +73,17 @@ public class PurchaseService {
             stock.setStockNum(stock.getStockNum().subtract(record.getNeedNum()));
             foodStockRepository.save(stock);
         }
+    }
+
+    @Transactional
+    public void updateUnit(Long recordId, String unit, Long userId) {
+        PurchaseRecord record = purchaseRecordRepository.findById(recordId)
+                .orElseThrow(() -> new RuntimeException("采购记录不存在"));
+        if (record.getUserId() == null || !record.getUserId().equals(userId)) {
+            throw new RuntimeException("无权操作此记录");
+        }
+        record.setUnit(unit);
+        purchaseRecordRepository.save(record);
     }
 
     @Transactional

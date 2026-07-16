@@ -4,6 +4,7 @@ import com.practice.mealplanner.dto.FamilyGroupResponse;
 import com.practice.mealplanner.dto.FamilyMemberRequest;
 import com.practice.mealplanner.dto.FamilyMemberResponse;
 import com.practice.mealplanner.dto.JoinFamilyRequest;
+import com.practice.mealplanner.dto.SubAccountRequest;
 import com.practice.mealplanner.model.User;
 import com.practice.mealplanner.service.AuthService;
 import com.practice.mealplanner.service.FamilyGroupService;
@@ -77,10 +78,16 @@ public class FamilyController {
     }
 
     @PostMapping("/members")
-    public ResponseEntity<FamilyMemberResponse> addMember(HttpServletRequest request,
-                                                           @Valid @RequestBody FamilyMemberRequest memberRequest) {
+    public ResponseEntity<?> addMember(HttpServletRequest request,
+                                        @Valid @RequestBody FamilyMemberRequest memberRequest) {
         String token = extractToken(request);
         User user = authService.getUserByToken(token);
+
+        // Sub-accounts cannot add family members
+        if (!memberService.isMainAccount(user.getId())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "子账户无权添加家庭成员"));
+        }
+
         return ResponseEntity.ok(memberService.addMember(user.getId(), memberRequest));
     }
 
@@ -99,6 +106,69 @@ public class FamilyController {
         User user = authService.getUserByToken(token);
         memberService.deleteMember(user.getId(), memberId);
         return ResponseEntity.ok().build();
+    }
+
+    // === Sub-account endpoints ===
+
+    @PostMapping("/sub-account")
+    public ResponseEntity<?> addSubAccount(HttpServletRequest request,
+                                            @Valid @RequestBody SubAccountRequest subRequest) {
+        String token = extractToken(request);
+        User user = authService.getUserByToken(token);
+
+        if (!memberService.isMainAccount(user.getId())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "只有主账号可以添加子账户"));
+        }
+
+        return ResponseEntity.ok(memberService.addSubAccount(user.getId(), subRequest));
+    }
+
+    @GetMapping("/pending-approvals")
+    public ResponseEntity<List<FamilyMemberResponse>> getPendingApprovals(HttpServletRequest request) {
+        String token = extractToken(request);
+        User user = authService.getUserByToken(token);
+
+        if (!memberService.isMainAccount(user.getId())) {
+            return ResponseEntity.ok(List.of());
+        }
+
+        return ResponseEntity.ok(memberService.getPendingApprovals(user.getId()));
+    }
+
+    @PostMapping("/approve/{memberId}")
+    public ResponseEntity<?> approveMember(HttpServletRequest request, @PathVariable Long memberId) {
+        String token = extractToken(request);
+        User user = authService.getUserByToken(token);
+
+        if (!memberService.isMainAccount(user.getId())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "只有主账号可以审批"));
+        }
+
+        return ResponseEntity.ok(memberService.approveMember(user.getId(), memberId));
+    }
+
+    @PostMapping("/reject/{memberId}")
+    public ResponseEntity<?> rejectMember(HttpServletRequest request, @PathVariable Long memberId) {
+        String token = extractToken(request);
+        User user = authService.getUserByToken(token);
+
+        if (!memberService.isMainAccount(user.getId())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "只有主账号可以审批"));
+        }
+
+        memberService.rejectMember(user.getId(), memberId);
+        return ResponseEntity.ok(Map.of("message", "已拒绝"));
+    }
+
+    @GetMapping("/check-main-account")
+    public ResponseEntity<Map<String, Object>> checkMainAccount(HttpServletRequest request) {
+        String token = extractToken(request);
+        User user = authService.getUserByToken(token);
+        boolean isMain = memberService.isMainAccount(user.getId());
+        Map<String, Object> result = new HashMap<>();
+        result.put("isMainAccount", isMain);
+        result.put("userId", user.getId());
+        return ResponseEntity.ok(result);
     }
 
     private String extractToken(HttpServletRequest request) {

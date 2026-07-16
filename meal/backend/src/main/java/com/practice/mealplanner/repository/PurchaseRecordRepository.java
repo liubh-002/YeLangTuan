@@ -13,4 +13,5 @@ public interface PurchaseRecordRepository extends JpaRepository<PurchaseRecord, 
     List<PurchaseRecord> findByStatusAndUserId(String status, Long userId);
     List<PurchaseRecord> findByUserId(Long userId);
     int deleteByUserIdIsNull();
+    void deleteByUserId(Long userId);
 }

@@ -4,6 +4,8 @@ import com.practice.mealplanner.model.FoodStock;
 import com.practice.mealplanner.model.User;
 import com.practice.mealplanner.service.AuthService;
 import com.practice.mealplanner.service.StockService;
+import com.practice.mealplanner.repository.FoodStockRepository;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +21,7 @@ import java.util.Map;
 public class IngredientController {
 
     private final StockService stockService;
+    private final FoodStockRepository foodStockRepository;
     private final AuthService authService;
 
     @GetMapping
@@ -49,6 +52,14 @@ public class IngredientController {
     public ResponseEntity<Void> delete(HttpServletRequest request, @PathVariable Long id) {
         Long userId = getUserId(request);
         stockService.deleteStock(id, userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/all")
+    @Transactional
+    public ResponseEntity<Void> deleteAll(HttpServletRequest request) {
+        Long userId = getUserId(request);
+        foodStockRepository.deleteByUserId(userId);
         return ResponseEntity.ok().build();
     }
 

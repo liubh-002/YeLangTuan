@@ -4,6 +4,8 @@ import com.practice.mealplanner.model.PurchaseRecord;
 import com.practice.mealplanner.model.User;
 import com.practice.mealplanner.service.AuthService;
 import com.practice.mealplanner.service.PurchaseService;
+import com.practice.mealplanner.repository.PurchaseRecordRepository;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +21,7 @@ import java.util.Map;
 public class PurchaseController {
 
     private final PurchaseService purchaseService;
+    private final PurchaseRecordRepository purchaseRecordRepository;
     private final AuthService authService;
 
     @GetMapping("/plan/{planId}")
@@ -32,7 +35,7 @@ public class PurchaseController {
         Long userId = getUserId(request);
         String foodName = (String) body.get("foodName");
         BigDecimal needNum = new BigDecimal(body.get("needNum").toString());
-        return ResponseEntity.ok(purchaseService.addRecord(planId, foodName, needNum, userId));
+        return ResponseEntity.ok(purchaseService.addRecord(planId, foodName, needNum, userId, body.get("unit") != null ? body.get("unit").toString() : null));
     }
 
     @PostMapping("/{recordId}/purchased")
@@ -56,10 +59,26 @@ public class PurchaseController {
     }
 
     @PutMapping("/{recordId}/quantity")
+    public ResponseEntity<Void> updateUnit(HttpServletRequest request, @PathVariable Long recordId, @RequestBody Map<String, Object> body) {
+        Long userId = getUserId(request);
+        String unit = (String) body.get("unit");
+        purchaseService.updateUnit(recordId, unit, userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{recordId}/update-quantity")
     public ResponseEntity<Void> updateQuantity(HttpServletRequest request, @PathVariable Long recordId, @RequestBody Map<String, Object> body) {
         Long userId = getUserId(request);
         BigDecimal quantity = new BigDecimal(body.get("quantity").toString());
         purchaseService.updateQuantity(recordId, quantity, userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/all")
+    @Transactional
+    public ResponseEntity<Void> deleteAll(HttpServletRequest request) {
+        Long userId = getUserId(request);
+        purchaseRecordRepository.deleteByUserId(userId);
         return ResponseEntity.ok().build();
     }
 

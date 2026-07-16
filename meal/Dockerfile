@@ -1,21 +1,38 @@
-﻿# Stage 1: Build Frontend
-FROM node:20-alpine AS frontend-builder
-WORKDIR /app/frontend
-COPY frontend/package.json ./
-RUN npm install --legacy-peer-deps
-COPY frontend/ .
-RUN npm run build
+﻿# ============================================
+# Build stage
+# ============================================
+FROM eclipse-temurin:17-jdk-alpine AS build
 
-# Stage 2: Build Backend (maven image includes mvn)
-FROM maven:3.9-eclipse-temurin-17 AS backend-builder
+# Install Maven
+RUN apk add --no-cache curl tar bash && \
+    curl -fsSL https://dlcdn.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz -o /tmp/maven.tar.gz && \
+    tar xzf /tmp/maven.tar.gz -C /opt && \
+    ln -s /opt/apache-maven-3.9.9/bin/mvn /usr/local/bin/mvn && \
+    rm /tmp/maven.tar.gz
+
+# Install Node.js for frontend
+RUN apk add --no-cache nodejs npm
+
+# Build frontend
 WORKDIR /app
-COPY --from=frontend-builder /app/frontend/dist ./backend/src/main/resources/static/
+COPY frontend/package.json ./frontend/
+RUN cd frontend && npm install --legacy-peer-deps
+COPY frontend/ ./frontend/
+RUN cd frontend && npm run build && \
+    mkdir -p backend/src/main/resources/static && \
+    cp -r dist/* backend/src/main/resources/static/
+
+# Build backend with Maven
 COPY backend/ ./backend/
 RUN mvn -f backend/pom.xml clean package -DskipTests
 
-# Stage 3: Runtime
+# ============================================
+# Runtime stage
+# ============================================
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
-COPY --from=backend-builder /app/backend/target/*.jar app.jar
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+COPY --from=build /app/backend/target/*.jar app.jar
 EXPOSE 8080
+USER appuser
 CMD ["java", "-Xmx256m", "-jar", "app.jar"]

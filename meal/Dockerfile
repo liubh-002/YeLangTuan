@@ -3,18 +3,18 @@
 # ============================================
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+COPY frontend/package.json ./
+RUN npm install
 COPY frontend/ .
 RUN npm run build
 
 # ============================================
-# Stage 2: Build Backend with Maven
+# Stage 2: Build Backend
 # ============================================
 FROM maven:3.9-eclipse-temurin-17 AS backend-builder
 WORKDIR /app
-COPY backend/ ./backend/
 COPY --from=frontend-builder /app/frontend/dist ./backend/src/main/resources/static/
+COPY backend/ ./backend/
 RUN mvn -f backend/pom.xml clean package -DskipTests
 
 # ============================================

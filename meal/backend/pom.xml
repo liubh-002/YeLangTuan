@@ -62,19 +62,7 @@
         </dependency>
     </dependencies>
 
-    <repositories>
-        <repository>
-            <id>aliyunmaven</id>
-            <name>闃块噷浜慚aven浠撳簱</name>
-            <url>https://maven.aliyun.com/repository/public</url>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
+
 
     <build>
         <plugins>

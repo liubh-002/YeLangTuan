@@ -3,21 +3,24 @@
 # ============================================
 FROM eclipse-temurin:17-jdk-alpine AS build
 
-# Install all tools via apk (no curl download)
+# Install all tools via apk
 RUN apk add --no-cache curl tar bash nodejs npm maven
 
 # Build frontend
-WORKDIR /app
-COPY frontend/package.json ./frontend/
-RUN cd frontend && npm install --legacy-peer-deps
-COPY frontend/ ./frontend/
-RUN cd frontend && npm run build && \
-    mkdir -p backend/src/main/resources/static && \
-    cp -r dist/* backend/src/main/resources/static/
+WORKDIR /app/frontend
+COPY frontend/package.json ./
+RUN npm install --legacy-peer-deps
+COPY frontend/ .
+RUN npm run build
+
+# Copy frontend build to backend static resources
+RUN mkdir -p /app/backend/src/main/resources/static && \
+    cp -r /app/frontend/dist/* /app/backend/src/main/resources/static/
 
 # Build backend with Maven
+WORKDIR /app
 COPY backend/ ./backend/
-RUN mvn -f backend/pom.xml clean package -DskipTests
+RUN mvn -f /app/backend/pom.xml clean package -DskipTests
 
 # ============================================
 # Runtime stage

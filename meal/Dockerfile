@@ -3,15 +3,8 @@
 # ============================================
 FROM eclipse-temurin:17-jdk-alpine AS build
 
-# Install Maven
-RUN apk add --no-cache curl tar bash && \
-    curl -fsSL https://dlcdn.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz -o /tmp/maven.tar.gz && \
-    tar xzf /tmp/maven.tar.gz -C /opt && \
-    ln -s /opt/apache-maven-3.9.9/bin/mvn /usr/local/bin/mvn && \
-    rm /tmp/maven.tar.gz
-
-# Install Node.js for frontend
-RUN apk add --no-cache nodejs npm
+# Install all tools via apk (no curl download)
+RUN apk add --no-cache curl tar bash nodejs npm maven
 
 # Build frontend
 WORKDIR /app
